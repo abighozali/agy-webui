@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 360" width="1200" height="360" fill="none">
+  <defs>
+    <linearGradient id="bgL" x1="0" y1="0" x2="1200" y2="360" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="50%" stop-color="#F8FAFC"/>
+      <stop offset="100%" stop-color="#FFFFFF"/>
+    </linearGradient>
+    <radialGradient id="glowL" cx="50%" cy="42%" r="48%">
+      <stop offset="0%" stop-color="#6366F1" stop-opacity="0.12"/>
+      <stop offset="55%" stop-color="#0284C7" stop-opacity="0.05"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="markL" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#4F46E5"/>
+      <stop offset="55%" stop-color="#6366F1"/>
+      <stop offset="100%" stop-color="#0284C7"/>
+    </linearGradient>
+    <pattern id="gridL" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M 32 0 L 0 0 0 32" fill="none" stroke="#0F172A" stroke-opacity="0.04" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <rect width="1200" height="360" rx="20" fill="url(#bgL)"/>
+  <rect width="1200" height="360" rx="20" fill="url(#gridL)"/>
+  <rect width="1200" height="360" rx="20" fill="url(#glowL)"/>
+  <rect x="0.5" y="0.5" width="1199" height="359" rx="19.5" stroke="#E2E8F0"/>
+
+  <!-- Emblem + Title -->
+  <g transform="translate(600, 128)">
+    <g transform="translate(-188, -46)">
+      <rect x="0" y="0" width="72" height="72" rx="18" fill="#0F172A" stroke="#1E293B" stroke-width="1.5"/>
+      <path d="M36 14L55 56H46L36 33.5L26 56H17L36 14Z" fill="url(#markL)"/>
+      <circle cx="36" cy="49" r="4.2" fill="#38BDF8"/>
+    </g>
+    <text x="-94" y="4" fill="#0F172A" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="52" font-weight="700" letter-spacing="-1.2">agy-webui</text>
+  </g>
+
+  <!-- Subtitle -->
+  <text x="600" y="196" text-anchor="middle" fill="#475569" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="20" font-weight="400">
+    Standalone, persistent WebUI bridge for Antigravity — decoupled from CLI session lifecycles
+  </text>
+
+  <!-- Feature Pills -->
+  <g transform="translate(600, 256)" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" font-weight="500">
+    <g transform="translate(-376, -18)">
+      <rect width="172" height="36" rx="18" fill="#FFFFFF" stroke="#E2E8F0"/>
+      <circle cx="20" cy="18" r="4" fill="#16A34A"/>
+      <text x="34" y="22.5" fill="#1E293B">Persistent Service</text>
+    </g>
+    <g transform="translate(-186, -18)">
+      <rect width="166" height="36" rx="18" fill="#FFFFFF" stroke="#E2E8F0"/>
+      <circle cx="20" cy="18" r="4" fill="#0284C7"/>
+      <text x="34" y="22.5" fill="#1E293B">Real-Time Sync</text>
+    </g>
+    <g transform="translate(-2, -18)">
+      <rect width="204" height="36" rx="18" fill="#FFFFFF" stroke="#E2E8F0"/>
+      <circle cx="20" cy="18" r="4" fill="#4F46E5"/>
+      <text x="34" y="22.5" fill="#1E293B">Disconnect-Resilient</text>
+    </g>
+    <g transform="translate(220, -18)">
+      <rect width="156" height="36" rx="18" fill="#FFFFFF" stroke="#E2E8F0"/>
+      <circle cx="20" cy="18" r="4" fill="#D97706"/>
+      <text x="34" y="22.5" fill="#1E293B">Optional Auth Gate</text>
+    </g>
+  </g>
+</svg>

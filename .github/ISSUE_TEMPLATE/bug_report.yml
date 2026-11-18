@@ -1,0 +1,36 @@
+name: Bug Report
+description: Report a bug or unexpected behavior in agy-webui
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the bug
+      description: A clear and concise description of what happened.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Commands, configuration, or browser steps that triggered the issue.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, architecture (`uname -m`), Python version, and systemd/manual mode.
+      placeholder: |
+        - OS: Ubuntu 24.04
+        - Arch: x86_64
+        - Python: 3.12
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Service logs (redact any secrets)
+      description: Output of `journalctl -u antigravity-webui.service -n 50 --no-pager`.
+      render: shell

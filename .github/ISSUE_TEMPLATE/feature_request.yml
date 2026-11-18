@@ -1,0 +1,19 @@
+name: Feature Request
+description: Suggest an improvement or new capability for agy-webui
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What workflow or limitation would this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: How should it work from a user or operator perspective?
+    validations:
+      required: true
