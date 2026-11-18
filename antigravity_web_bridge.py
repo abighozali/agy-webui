@@ -72,6 +72,9 @@ GATE_SESSION_TTL = 7 * 24 * 3600
 # In-memory store for async login sessions: id -> {"done": Event, "status": int, "content_type": str, "body": bytes}
 LOGIN_SESSIONS: dict[str, dict] = {}
 LAST_WEBUI_MUTATION: float = 0.0
+IN_FLIGHT_MUTATIONS: int = 0
+TRACKED_WEBUI_CASCADES: dict[str, float] = {}
+UUID_RE = re.compile(rb"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 MUTATION_RPCS = (
     b"/exa.language_server_pb.LanguageServerService/StartCascade",
     b"/exa.language_server_pb.LanguageServerService/SendUserCascadeMessage",
@@ -80,6 +83,17 @@ MUTATION_RPCS = (
     b"/exa.language_server_pb.LanguageServerService/RevertToCascadeStep",
     b"/exa.language_server_pb.LanguageServerService/DeleteCascadeTrajectory",
 )
+
+
+def track_uuids_from_bytes(data: bytes) -> None:
+    if not data:
+        return
+    now = time.monotonic()
+    for match in UUID_RE.findall(data):
+        try:
+            TRACKED_WEBUI_CASCADES[match.decode("ascii")] = now
+        except Exception:
+            pass
 
 LOGIN_PAGE_HTML = """<!doctype html>
 <html lang="en">
@@ -463,6 +477,45 @@ async def pipe(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> No
             pass
 
 
+async def pipe_response(
+    reader: asyncio.StreamReader,
+    writer: asyncio.StreamWriter,
+    detach_on_disconnect: bool = False,
+    track_uuids: bool = False,
+) -> None:
+    """Forward backend response to client; if detach_on_disconnect is True, keep
+    draining backend_reader to EOF even if the client disconnects so the backend
+    does not cancel an in-flight mutation RPC."""
+    client_alive = True
+    try:
+        while True:
+            data = await reader.read(65536)
+            if not data:
+                break
+            if track_uuids:
+                track_uuids_from_bytes(data)
+            if client_alive:
+                try:
+                    writer.write(data)
+                    await writer.drain()
+                except (ConnectionResetError, BrokenPipeError, OSError):
+                    client_alive = False
+                    try:
+                        writer.close()
+                    except Exception:
+                        pass
+                    if not detach_on_disconnect:
+                        break
+    except asyncio.CancelledError:
+        pass
+    finally:
+        if client_alive:
+            try:
+                writer.close()
+            except Exception:
+                pass
+
+
 async def backend_rpc_json(rpc_name: str, csrf_token: str, payload: dict) -> dict:
     port = ACTIVE_BACKEND_PORT
     try:
@@ -658,18 +711,18 @@ def patch_html(html: bytes) -> bytes:
     return html
 
 
-async def handle_login_page(client_writer: asyncio.StreamWriter) -> None:
+async def handle_login_page(
+    client_writer: asyncio.StreamWriter, head_only: bool = False
+) -> None:
     body = LOGIN_PAGE_HTML.encode("utf-8")
-    client_writer.write(
-        (
-            f"HTTP/1.1 200 OK\r\n"
-            f"Content-Type: text/html; charset=utf-8\r\n"
-            f"Content-Length: {len(body)}\r\n"
-            f"Cache-Control: no-store\r\n"
-            f"Connection: close\r\n\r\n"
-        ).encode("ascii")
-        + body
-    )
+    hdr = (
+        f"HTTP/1.1 200 OK\r\n"
+        f"Content-Type: text/html; charset=utf-8\r\n"
+        f"Content-Length: {len(body)}\r\n"
+        f"Cache-Control: no-store\r\n"
+        f"Connection: close\r\n\r\n"
+    ).encode("ascii")
+    client_writer.write(hdr if head_only else hdr + body)
     await client_writer.drain()
     client_writer.close()
 
@@ -755,8 +808,20 @@ async def handle_client(
         await handle_icon(client_writer)
         return
 
-    if parsed.path == "/login" and method == b"GET":
-        await handle_login_page(client_writer)
+    if parsed.path == "/login" and method in (b"GET", b"HEAD"):
+        await handle_login_page(client_writer, head_only=(method == b"HEAD"))
+        return
+
+    if parsed.path == "/" and method == b"HEAD":
+        client_writer.write(
+            b"HTTP/1.1 200 OK\r\n"
+            b"Content-Type: text/html; charset=utf-8\r\n"
+            b"Content-Length: 0\r\n"
+            b"Cache-Control: no-store\r\n"
+            b"Connection: close\r\n\r\n"
+        )
+        await client_writer.drain()
+        client_writer.close()
         return
 
     is_html_candidate = method == b"GET" and (
@@ -795,7 +860,9 @@ async def handle_client(
         client_writer.close()
         return
 
-    if req_path in MUTATION_RPCS:
+    global LAST_WEBUI_MUTATION, IN_FLIGHT_MUTATIONS
+    is_mutation = req_path in MUTATION_RPCS
+    if is_mutation:
         LAST_WEBUI_MUTATION = time.monotonic()
 
     if parsed.path == "/_bridge/start_login" and method == b"POST":
@@ -883,6 +950,8 @@ async def handle_client(
                     chunk = await client_reader.read(min(65536, remaining))
                     if not chunk:
                         break
+                    if is_mutation:
+                        track_uuids_from_bytes(chunk)
                     backend_writer.write(chunk)
                     await backend_writer.drain()
                     remaining -= len(chunk)
@@ -902,16 +971,30 @@ async def handle_client(
                         await backend_writer.drain()
                         break
                     data = await client_reader.readexactly(size + 2)
+                    if is_mutation:
+                        track_uuids_from_bytes(data)
                     backend_writer.write(data)
                     await backend_writer.drain()
         except Exception:
             pass
 
-    await asyncio.gather(
-        forward_request_body(),
-        pipe(backend_reader, client_writer),
-        return_exceptions=True,
-    )
+    if is_mutation:
+        IN_FLIGHT_MUTATIONS += 1
+    try:
+        await asyncio.gather(
+            forward_request_body(),
+            pipe_response(
+                backend_reader,
+                client_writer,
+                detach_on_disconnect=is_mutation,
+                track_uuids=is_mutation,
+            ),
+            return_exceptions=True,
+        )
+    finally:
+        if is_mutation:
+            IN_FLIGHT_MUTATIONS = max(0, IN_FLIGHT_MUTATIONS - 1)
+            LAST_WEBUI_MUTATION = time.monotonic()
 
     if backend_writer is not None:
         try:
@@ -965,7 +1048,8 @@ def snapshot_cli_conversations() -> tuple[tuple[str, int, int], ...]:
     """Snapshot conversation DB/WAL/PB mtimes and sizes to detect agy updates."""
     entries = []
     patterns = [
-        os.path.join(CLI_DATA_DIR, "conversations", "*.db*"),
+        os.path.join(CLI_DATA_DIR, "conversations", "*.db"),
+        os.path.join(CLI_DATA_DIR, "conversations", "*.db-wal"),
         os.path.join(CLI_DATA_DIR, "conversations", "*.pb"),
         os.path.join(CLI_DATA_DIR, "jetbox_summaries_proto.pb"),
     ]
@@ -977,6 +1061,30 @@ def snapshot_cli_conversations() -> tuple[tuple[str, int, int], ...]:
             except OSError:
                 pass
     return tuple(entries)
+
+
+async def has_active_webui_cascade(csrf_token: str) -> bool:
+    """Return True if any WebUI-initiated cascade or mutation RPC is currently active."""
+    if IN_FLIGHT_MUTATIONS > 0:
+        return True
+    traj_res = await backend_rpc_json("GetAllCascadeTrajectories", csrf_token, {})
+    summaries = traj_res.get("trajectorySummaries", {}) if isinstance(traj_res, dict) else {}
+    if any("RUNNING" in str(v.get("status", "")) for v in summaries.values()):
+        return True
+
+    now = time.monotonic()
+    for cid in list(TRACKED_WEBUI_CASCADES.keys()):
+        res = await backend_rpc_json("GetCascadeTrajectory", csrf_token, {"cascadeId": cid})
+        status = str(res.get("status", "")) if isinstance(res, dict) else ""
+        if "RUNNING" in status:
+            TRACKED_WEBUI_CASCADES[cid] = now
+            return True
+        last_seen = TRACKED_WEBUI_CASCADES.get(cid, 0.0)
+        if not status and (now - last_seen < 300.0):
+            return True
+        if status and "RUNNING" not in status and (now - last_seen > 7200.0):
+            TRACKED_WEBUI_CASCADES.pop(cid, None)
+    return False
 
 
 async def sync_watcher(
@@ -991,19 +1099,17 @@ async def sync_watcher(
 
     while not stop_event.is_set():
         await asyncio.sleep(2.0)
-        if LOGIN_SESSIONS or (time.monotonic() - LAST_WEBUI_MUTATION < 60.0):
+        if LOGIN_SESSIONS or IN_FLIGHT_MUTATIONS > 0 or (time.monotonic() - LAST_WEBUI_MUTATION < 30.0):
             last_snap = snapshot_cli_conversations()
             continue
         cur_snap = snapshot_cli_conversations()
         if cur_snap == last_snap:
             continue
-        traj_res = await backend_rpc_json("GetAllCascadeTrajectories", csrf_token, {})
-        summaries = traj_res.get("trajectorySummaries", {}) if isinstance(traj_res, dict) else {}
-        if any(v.get("status") == "CASCADE_RUN_STATUS_RUNNING" for v in summaries.values()):
+        if await has_active_webui_cascade(csrf_token):
             last_snap = cur_snap
             continue
         await asyncio.sleep(1.0)
-        if LOGIN_SESSIONS or (time.monotonic() - LAST_WEBUI_MUTATION < 60.0):
+        if LOGIN_SESSIONS or IN_FLIGHT_MUTATIONS > 0 or (time.monotonic() - LAST_WEBUI_MUTATION < 60.0):
             last_snap = snapshot_cli_conversations()
             continue
         cur_snap = snapshot_cli_conversations()
@@ -1019,13 +1125,11 @@ async def sync_watcher(
             new_proc = start_language_server(csrf_token, new_port)
             await wait_for_backend(new_port, timeout=15.0)
             await asyncio.sleep(0.3)
-            if LOGIN_SESSIONS or (time.monotonic() - LAST_WEBUI_MUTATION < 60.0):
+            if LOGIN_SESSIONS or IN_FLIGHT_MUTATIONS > 0 or (time.monotonic() - LAST_WEBUI_MUTATION < 60.0):
                 await asyncio.to_thread(stop_process, new_proc)
                 last_snap = snapshot_cli_conversations()
                 continue
-            traj_res2 = await backend_rpc_json("GetAllCascadeTrajectories", csrf_token, {})
-            summaries2 = traj_res2.get("trajectorySummaries", {}) if isinstance(traj_res2, dict) else {}
-            if any(v.get("status") == "CASCADE_RUN_STATUS_RUNNING" for v in summaries2.values()):
+            if await has_active_webui_cascade(csrf_token):
                 await asyncio.to_thread(stop_process, new_proc)
                 last_snap = snapshot_cli_conversations()
                 continue
