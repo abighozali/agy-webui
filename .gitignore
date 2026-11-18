@@ -1,0 +1,7 @@
+auth.env
+*.env
+!auth.env.example
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
