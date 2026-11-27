@@ -1,6 +1,7 @@
 # Secrets, credentials, and runtime tokens
 auth_proxy.json
 *auth_proxy*.json
+!config/auth_proxy.example.json
 webui-csrf-token
 app_storage.json
 plugin-secrets.json

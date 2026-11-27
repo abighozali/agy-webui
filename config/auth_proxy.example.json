@@ -1,0 +1,6 @@
+{
+  "passkey": "REPLACE_WITH_STRONG_PASSKEY",
+  "cookie_secret": "REPLACE_WITH_64_CHAR_HEX_SECRET",
+  "cookie_name": "agy_edge_session",
+  "ttl_seconds": 604800
+}
