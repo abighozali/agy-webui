@@ -1,0 +1,22 @@
+# Secrets, credentials, and runtime tokens
+auth_proxy.json
+*auth_proxy*.json
+webui-csrf-token
+app_storage.json
+plugin-secrets.json
+.env
+*.env
+.env.*
+*cookies*
+*.pem
+*.key
+
+# Logs, PIDs, and temporary artifacts
+*.log
+*.pid
+*.tmp
+*.bak
+*.tar.gz
+__pycache__/
+*.pyc
+.DS_Store

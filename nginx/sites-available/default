@@ -1,0 +1,74 @@
+server {
+    listen 0.0.0.0:25323 default_server;
+    server_name _;
+
+    location /v1 {
+        proxy_pass http://127.0.0.1:8642;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_buffering off;
+        proxy_read_timeout 300s;
+    }
+
+    location /omniroute/ {
+        proxy_pass http://127.0.0.1:25043/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_buffering off;
+        proxy_read_timeout 300s;
+    }
+
+    location = /_auth/verify {
+        internal;
+        proxy_pass http://127.0.0.1:25216/_auth/verify;
+        proxy_pass_request_body off;
+        proxy_set_header Content-Length "";
+        proxy_set_header X-Original-Host $http_host;
+        proxy_set_header X-Forwarded-Host $http_x_forwarded_host;
+        proxy_set_header Cookie $http_cookie;
+    }
+
+    location /_auth/ {
+        auth_request off;
+        proxy_pass http://127.0.0.1:25216;
+        proxy_http_version 1.1;
+        proxy_set_header Host 127.0.0.1:25216;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_buffering off;
+        proxy_request_buffering off;
+        proxy_socket_keepalive on;
+        tcp_nodelay on;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+
+    location @agy_auth_login {
+        return 302 https://agy.abighozali.com/_auth/login?next=$request_uri;
+    }
+
+    location / {
+        auth_request /_auth/verify;
+        error_page 401 = @agy_auth_login;
+        proxy_pass http://$port25323_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host $port25323_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_buffering off;
+        proxy_request_buffering off;
+        tcp_nodelay on;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+}
